@@ -1,0 +1,12 @@
+[package]
+authors = ["Mark Sinclair <mark.edward.x@gmail.com>"]
+name = "torus"
+version = "0.1.0"
+
+[dependencies]
+clap = "^2"
+prettytable-rs = "^0.6"
+rusqlite = "0.11.0"
+rustyline = "1.0.0"
+toml = "0.3.2"
+xdg = "^2.1"
