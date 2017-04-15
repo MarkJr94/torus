@@ -1,3 +1,4 @@
+
 #[macro_use]
 extern crate prettytable;
 extern crate clap;
@@ -5,31 +6,26 @@ extern crate rustyline;
 extern crate xdg;
 extern crate rusqlite;
 
+mod commands;
+mod data;
+mod err;
+
 use std::error::Error;
 use std::io::{self, Write, stdout};
 use std::path::Path;
 
 use clap::{Arg, App, SubCommand};
 
-use prettytable::Table;
-use prettytable::row::Row;
-
 use rusqlite::Connection;
 
 use xdg::BaseDirectories;
 
+use err::TErr;
+use data::Entry;
+use commands::{Command, exec_command};
+
 const NAME: &'static str = "torus";
 const DBNAME: &'static str = "torus.db";
-
-#[derive(Debug, PartialEq, Eq)]
-struct Entry {
-    id: i32,
-    name: String,
-    read: bool,
-    page: u32,
-    genre: String,
-    author: String,
-}
 
 fn create_db<T: AsRef<Path>>(path: &T) -> Result<Connection, Box<Error>> {
     let conn = Connection::open(path)?;
@@ -58,13 +54,11 @@ fn init() -> Connection {
     let db_path = bd.find_data_file(DBNAME);
 
     let p = match db_path {
-        Some(path) => {
-            println!("found db");
-            Connection::open(path).expect("Couldn't open db")
-        }
+        Some(path) => Connection::open(path).expect("Couldn't open db"),
         None => {
-            println!("Creating db");
-            let p = bd.place_data_file(DBNAME).expect("Couldn't get db");
+            println!("Creating Database");
+            let p = bd.place_data_file(DBNAME)
+                .expect("Couldn't open new Database");
             create_db(&p).expect("Couldn't create db")
         }
     };
@@ -72,52 +66,6 @@ fn init() -> Connection {
     p
 }
 
-fn do_add(conn: &Connection, entry: &Entry) -> Result<i32, rusqlite::Error> {
-    conn.execute("INSERT INTO entry (name, author, read, page, genre)
-                  VALUES (?1, ?2, ?3, ?4, ?5)",
-                 &[&entry.name,
-                   &entry.author,
-                   &entry.read,
-                   &entry.page,
-                   &entry.genre])
-}
-
-fn do_list(conn: &Connection) -> Result<(), rusqlite::Error> {
-    let mut stmt = conn.prepare("SELECT id, name, author, page, genre, read FROM entry
-                                 ORDER BY page DESC")?;
-
-    let entries = stmt.query_map(&[], |row| {
-            Entry {
-                id: row.get(0),
-                name: row.get(1),
-                author: row.get(2),
-                page: row.get(3),
-                genre: row.get(4),
-                read: row.get(5),
-            }
-        })?;
-
-
-    let mut table = Table::new();
-    table.add_row(row!["ID", "Name", "AUTHOR", "GENRE", "PAGE", "READ"]);
-
-    for entry in entries {
-        let entry = entry?;
-
-        let row = row![&entry.id.to_string(),
-                       &entry.name.to_string(),
-                       &entry.author.to_string(),
-                       &entry.genre.to_string(),
-                       &entry.page.to_string(),
-                       &entry.read.to_string()];
-
-        table.add_row(row);
-    }
-
-    table.printstd();
-
-    Ok(())
-}
 
 fn main() {
     let conn = init();
@@ -144,10 +92,42 @@ fn main() {
                         .arg(Arg::with_name("PAGE")
                                  .default_value("0")
                                  .help("Page you are currently at")))
-        .subcommand(SubCommand::with_name("list").about("list entries in order of page"));
+        .subcommand(SubCommand::with_name("list").about("list entries in order of page"))
+        .subcommand(SubCommand::with_name("search")
+                    .about("find entries. case insensitive match on 'TITLE', 'AUTHOR', and 'GENRE'")
+                    .arg(Arg::with_name("QUERY")
+                         .required(true)
+                         .index(1)
+                         .help("search query")))
+        .subcommand(SubCommand::with_name("choose")
+                    .about("Choose a random entry for you to read"))
+        .subcommand(SubCommand::with_name("finish")
+                    .about("Mark an entry as read")
+                    .arg(Arg::with_name("ENTRY_ID")
+                         .required(true)
+                         .index(1)
+                         .help("ID of entry to mark as read (acquire from `search` or `list`)")))
+        .subcommand(SubCommand::with_name("delete")
+                    .about("Delete an entry")
+                    .arg(Arg::with_name("ENTRY_ID")
+                         .required(true)
+                         .index(1)
+                         .help("ID of entry to delete (acquire from `search` or `list`)")))
+        .subcommand(SubCommand::with_name("set-page")
+                    .about("Set the last page you read for an entry")
+                    .arg(Arg::with_name("ENTRY_ID")
+                         .required(true)
+                         .index(1)
+                         .help("ID of entry to modify (acquire from `search` or `list`)"))
+                    .arg(Arg::with_name("PAGE")
+                         .required(true)
+                         .index(2)
+                         .help("The last page you read of this entry")));
 
     let matches = app.get_matches();
 
+
+    let mut command = Command::Nil;
     if let Some(add) = matches.subcommand_matches("add") {
         let entry = Entry {
             name: add.value_of("TITLE").unwrap().into(),
@@ -161,15 +141,60 @@ fn main() {
             id: 0,
         };
 
-
-        do_add(&conn, &entry).expect("Failed to add entry :(");
-        println!("Successfully added {} by {}", entry.name, entry.author);
+        command = Command::Add(entry);
     }
 
     if let Some(_) = matches.subcommand_matches("list") {
-        do_list(&conn).expect("unable to list entries for some reason :(");
+        command = Command::List;
     }
 
+    if let Some(search) = matches.subcommand_matches("search") {
+        let query = search.value_of("QUERY").unwrap().into();
 
-    println!("Hello, world!");
+        command = Command::Search(query);
+    }
+
+    if let Some(_) = matches.subcommand_matches("choose") {
+        command = Command::Choose;
+    }
+
+    if let Some(finish) = matches.subcommand_matches("finish") {
+        let id = finish
+            .value_of("ENTRY_ID")
+            .unwrap()
+            .parse()
+            .expect("ID must be positive integer");
+
+        command = Command::Finish(id);
+    }
+
+    if let Some(delete) = matches.subcommand_matches("delete") {
+        let id = delete
+            .value_of("ENTRY_ID")
+            .unwrap()
+            .parse()
+            .expect("ID must be positive integer");
+
+        command = Command::Delete(id);
+    }
+
+    if let Some(set_page) = matches.subcommand_matches("set-page") {
+        let id = set_page
+            .value_of("ENTRY_ID")
+            .unwrap()
+            .parse()
+            .expect("ID must be positive integer");
+
+        let page = set_page
+            .value_of("PAGE")
+            .unwrap()
+            .parse()
+            .expect("PAGE must be a positive integer");
+
+        command = Command::SetPage(id, page);
+    }
+
+    let msg = exec_command(&conn, command).unwrap();
+
+    println!("{}", msg);
 }
