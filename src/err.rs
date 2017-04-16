@@ -1,5 +1,6 @@
 use std::error;
 use std::fmt;
+use std::num::ParseIntError;
 
 use rusqlite;
 
@@ -7,6 +8,8 @@ use rusqlite;
 pub enum TErr {
     Db(rusqlite::Error),
     NoSuchEntry(u32),
+    Parse(ParseIntError),
+    MissingArg(&'static str),
 }
 
 impl From<rusqlite::Error> for TErr {
@@ -15,11 +18,19 @@ impl From<rusqlite::Error> for TErr {
     }
 }
 
+impl From<ParseIntError> for TErr {
+    fn from(err: ParseIntError) -> TErr {
+        TErr::Parse(err)
+    }
+}
+
 impl fmt::Display for TErr {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match *self {
             TErr::Db(ref err) => write!(f, "SQLite Error: {}", err),
             TErr::NoSuchEntry(id) => write!(f, "No entry with id {}", id),
+            TErr::Parse(ref err) => write!(f, "Parsing error: {}", err),
+            TErr::MissingArg(arg) => write!(f, "Missing argument <{}>", arg),
         }
     }
 }
@@ -29,6 +40,8 @@ impl error::Error for TErr {
         match *self {
             TErr::Db(ref err) => err.description(),
             TErr::NoSuchEntry(_) => "Invalid entry id",
+            TErr::Parse(_) => "Parsing error",
+            TErr::MissingArg(_) => "Missing argument",
         }
     }
 
@@ -36,6 +49,8 @@ impl error::Error for TErr {
         match *self {
             TErr::Db(ref err) => Some(err),
             TErr::NoSuchEntry(_) => None,
+            TErr::Parse(ref err) => Some(err),
+            TErr::MissingArg(_) => None,
         }
     }
 }

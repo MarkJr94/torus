@@ -5,7 +5,7 @@ use rusqlite::{self, Connection};
 use data::Entry;
 use err::TErr;
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, PartialEq, Eq, Clone)]
 pub enum Command {
     Add(Entry),
     Search(String),

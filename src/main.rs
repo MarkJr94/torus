@@ -25,6 +25,7 @@ use linefeed::{Reader, ReadResult};
 use xdg::BaseDirectories;
 
 use data::Entry;
+use err::TErr;
 use commands::{Command, exec_command};
 
 const NAME: &'static str = "torus";
@@ -81,18 +82,23 @@ fn init() -> (Connection, PathBuf) {
     (p, hist_path)
 }
 
-fn ep<'a>(conn: &Connection, matches: clap::ArgMatches<'a>) {
+fn ep<'a>(conn: &Connection, matches: clap::ArgMatches<'a>) -> Result<(), err::TErr> {
     let mut command = Command::Nil;
 
     if let Some(add) = matches.subcommand_matches("add") {
         let entry = Entry {
-            name: add.value_of("TITLE").unwrap().into(),
-            genre: add.value_of("GENRE").unwrap().into(),
+            name: add.value_of("TITLE")
+                .ok_or(TErr::MissingArg("TITLE"))?
+                .into(),
+            genre: add.value_of("GENRE")
+                .ok_or(TErr::MissingArg("GENRE"))?
+                .into(),
             page: add.value_of("PAGE")
-                .unwrap()
-                .parse()
-                .expect("Invalid number for page"),
-            author: add.value_of("AUTHOR").unwrap().into(),
+                .ok_or(TErr::MissingArg("PAGE"))?
+                .parse()?,
+            author: add.value_of("AUTHOR")
+                .ok_or(TErr::MissingArg("AUTHOR"))?
+                .into(),
             read: false,
             id: 0,
         };
@@ -105,7 +111,10 @@ fn ep<'a>(conn: &Connection, matches: clap::ArgMatches<'a>) {
     }
 
     if let Some(search) = matches.subcommand_matches("search") {
-        let query = search.value_of("QUERY").unwrap().into();
+        let query = search
+            .value_of("QUERY")
+            .ok_or(TErr::MissingArg("QUERY"))?
+            .into();
 
         command = Command::Search(query);
     }
@@ -117,9 +126,8 @@ fn ep<'a>(conn: &Connection, matches: clap::ArgMatches<'a>) {
     if let Some(finish) = matches.subcommand_matches("finish") {
         let id = finish
             .value_of("ENTRY_ID")
-            .unwrap()
-            .parse()
-            .expect("ID must be positive integer");
+            .ok_or(TErr::MissingArg("ENTRY_ID"))?
+            .parse()?;
 
         command = Command::Finish(id);
     }
@@ -127,9 +135,8 @@ fn ep<'a>(conn: &Connection, matches: clap::ArgMatches<'a>) {
     if let Some(delete) = matches.subcommand_matches("delete") {
         let id = delete
             .value_of("ENTRY_ID")
-            .unwrap()
-            .parse()
-            .expect("ID must be positive integer");
+            .ok_or(TErr::MissingArg("ENTRY_ID"))?
+            .parse()?;
 
         command = Command::Delete(id);
     }
@@ -137,24 +144,26 @@ fn ep<'a>(conn: &Connection, matches: clap::ArgMatches<'a>) {
     if let Some(set_page) = matches.subcommand_matches("set-page") {
         let id = set_page
             .value_of("ENTRY_ID")
-            .unwrap()
-            .parse()
-            .expect("ID must be positive integer");
+            .ok_or(TErr::MissingArg("ENTRY_ID"))?
+            .parse()?;
 
         let page = set_page
             .value_of("PAGE")
-            .unwrap()
-            .parse()
-            .expect("PAGE must be a positive integer");
+            .ok_or(TErr::MissingArg("PAGE"))?
+            .parse()?;
 
         command = Command::SetPage(id, page);
     }
 
-    let msg = exec_command(&conn, command).unwrap();
+    let msg_res = exec_command(&conn, command.clone());
+
+    let msg =
+        msg_res.unwrap_or_else(|err| format!("Command {:?} failed. Caused by: {}", command, err));
 
     println!("{}", msg);
-}
 
+    Ok(())
+}
 fn dump_history<C: linefeed::Terminal>(reader: &Reader<C>,
                                        path: &PathBuf)
                                        -> Result<(), io::Error> {
@@ -254,8 +263,6 @@ fn main() {
 
         let mut reader = Reader::new("torus").expect("Couldn't open linereader");
 
-        reader.bind_sequence("\x38", linefeed::command::Command::PreviousHistory);
-
         load_history(&mut reader, &hist_path).unwrap_or_else(|e| {
             writeln!(io::stderr(), "Couldn't load history due to {}", e.description())
                 .unwrap();
@@ -272,7 +279,14 @@ fn main() {
             let matches = app.clone().get_matches_from_safe(args_it);
 
             let _ = matches
-                .map(|matches| { ep(&conn, matches); })
+                .map(|matches| {
+                         ep(&conn, matches).unwrap_or_else(|e| {
+                                                               writeln!(io::stderr(),
+                                                                        "Error: {}",
+                                                                        e)
+                                                                       .unwrap();
+                                                           });
+                     })
                 .map_err(|err| if err.kind != clap::ErrorKind::HelpDisplayed ||
                                   err.kind != clap::ErrorKind::VersionDisplayed {
                              writeln!(io::stderr(), "{}", err).unwrap();
@@ -289,6 +303,6 @@ fn main() {
 
     } else {
 
-        ep(&conn, matches);
+        ep(&conn, matches).unwrap_or_else(|e| { writeln!(io::stderr(), "Error: {}", e).unwrap(); });
     }
 }
