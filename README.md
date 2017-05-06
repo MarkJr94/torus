@@ -5,6 +5,8 @@
 # Usage
 
 ```
+CLI Reading List application
+
 USAGE:
     torus [SUBCOMMAND]
 
@@ -19,8 +21,10 @@ SUBCOMMANDS:
     finish      Mark an entry as read
     help        Prints this message or the help of the given subcommand(s)
     list        list entries in order of page
+    rate        Rate an entry
     search      find entries. case insensitive match on 'TITLE', 'AUTHOR', and 'GENRE'
     set-page    Set the last page you read for an entry
+    shell       Enter interactive mode
 ```
 
 # Example Session
@@ -60,10 +64,10 @@ Successfully added The Book by Alan W. Watts
 
 ## Output
 ```
-+----+----------+---------------+------------+------+-------+
-| ID | Name     | AUTHOR        | GENRE      | PAGE | READ  |
-+----+----------+---------------+------------+------+-------+
-| 3  | The Book | Alan W. Watts | Philosophy | 0    | false |
-+----+----------+---------------+------------+------+-------+
++----+----------+------------+------------+------+------+-------------------+-------------------+--------+
+| ID | Name     | AUTHOR     | GENRE      | PAGE | READ | DATE ADDED        | DATE FINISHED     | RATING |
++----+----------+------------+------------+------+------+-------------------+-------------------+--------+
+| 1  | The Book | Alan Watts | Philosophy | 0    | true | 05/06/17 13:13:29 |                   |        |
++----+----------+------------+------------+------+------+-------------------+-------------------+--------+
 End of List
 ```
