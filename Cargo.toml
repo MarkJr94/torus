@@ -6,6 +6,7 @@ version = "0.1.0"
 [dependencies]
 clap = "^2"
 cmdline-parser = "0.1.0"
+error-chain = "0.10.0"
 linefeed = "~0.2.3"
 prettytable-rs = "^0.6"
 rusqlite = "0.11.0"

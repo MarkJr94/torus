@@ -1,3 +1,5 @@
+use std::fmt;
+
 use prettytable::Table;
 use prettytable::cell::Cell;
 
@@ -6,7 +8,8 @@ use rusqlite::{self, Connection};
 use time::{at, strftime, get_time};
 
 use data::Entry;
-use err::TErr;
+use errors::*;
+//use err::TErr;
 
 const DATE_FMT: &'static str = "%D %T";
 
@@ -23,7 +26,24 @@ pub enum Command {
     Nil,
 }
 
-pub fn exec_command(conn: &Connection, command: Command) -> Result<String, TErr> {
+impl fmt::Display for Command {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match *self {
+            Command::Add(ref e) => write!(f, "Add' {}' by '{}'", e.name, e.author),
+            Command::Search(ref query) => write!(f, "Search with query '{}'", query),
+            Command::List => write!(f, "List entries"),
+            Command::Finish(ref id) => write!(f, "Finish entry #{}", id),
+            Command::Delete(ref id) => write!(f, "Delete entry #{}", id),
+            Command::SetPage(ref id, ref pageno) => write!(f, "Set last-page-read to {}\
+                                                       for entry #{}", pageno, id),
+            Command::Rate(ref id, ref rating) => write!(f, "Rate entry #{} {} stars", id, rating),
+            Command::Choose => write!(f, "Choose a random entry"),
+            Command::Nil => write!(f, "Nil command for implementation reasons")
+        }
+    }
+}
+
+pub fn exec_command(conn: &Connection, command: Command) -> Result<String> {
     match command {
         Command::Add(ref entry) => do_add(conn, entry),
         Command::List => do_list(conn),
@@ -37,7 +57,7 @@ pub fn exec_command(conn: &Connection, command: Command) -> Result<String, TErr>
     }
 }
 
-fn do_add(conn: &Connection, entry: &Entry) -> Result<String, TErr> {
+fn do_add(conn: &Connection, entry: &Entry) -> Result<String> {
     let _ = conn.execute("INSERT INTO entry (name, author, read, page, genre, date_added)
                   VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
                          &[&entry.name,
@@ -50,7 +70,7 @@ fn do_add(conn: &Connection, entry: &Entry) -> Result<String, TErr> {
     Ok(format!("Successfully added {} by {}", entry.name, entry.author))
 }
 
-fn do_list(conn: &Connection) -> Result<String, TErr> {
+fn do_list(conn: &Connection) -> Result<String> {
     let mut stmt = conn.prepare("SELECT id, name, author, page, genre, read, date_added,
                                  date_finished, rating FROM entry
                                  ORDER BY page DESC")?;
@@ -74,7 +94,7 @@ fn do_list(conn: &Connection) -> Result<String, TErr> {
     Ok("End of List".into())
 }
 
-fn do_search(conn: &Connection, term: &str) -> Result<String, TErr> {
+fn do_search(conn: &Connection, term: &str) -> Result<String> {
     let mut stmt = conn.prepare("SELECT id, name, author, page, genre, read, \
                                  date_added, date_finished, rating FROM entry \
                                  WHERE name LIKE ?1 OR author LIKE ?1 or genre LIKE ?1 \
@@ -101,7 +121,7 @@ fn do_search(conn: &Connection, term: &str) -> Result<String, TErr> {
     Ok(format!("Found {} result(s)", n))
 }
 
-fn do_finish(conn: &Connection, id: u32) -> Result<String, TErr> {
+fn do_finish(conn: &Connection, id: u32) -> Result<String> {
     let mut stmt = conn.prepare("UPDATE entry SET read = 1, date_finished = ?2 WHERE id = ?1")?;
 
     let time = get_time();
@@ -113,15 +133,15 @@ fn do_finish(conn: &Connection, id: u32) -> Result<String, TErr> {
     if good {
         Ok(format!("Entry {} marked as read", id))
     } else {
-        Err(TErr::NoSuchEntry(id))
+        Err(ErrorKind::NoSuchEntry(id).into())
     }
 }
 
-fn do_rate(conn: &Connection, id: u32, rating: u8) -> Result<String, TErr> {
+fn do_rate(conn: &Connection, id: u32, rating: u8) -> Result<String> {
     let mut stmt = conn.prepare("UPDATE entry SET rating = ?2 WHERE id = ?1")?;
 
     if rating < 1 || rating > 5 {
-        return Err(TErr::BadRating);
+        return Err(ErrorKind::BadRating.into());
     }
 
     let num_updated = stmt.execute(&[&id, &rating])?;
@@ -131,11 +151,11 @@ fn do_rate(conn: &Connection, id: u32, rating: u8) -> Result<String, TErr> {
     if good {
         Ok(format!("Entry {} rated {} stars", id, rating))
     } else {
-        Err(TErr::NoSuchEntry(id))
+        Err(ErrorKind::NoSuchEntry(id).into())
     }
 }
 
-fn do_delete(conn: &Connection, id: u32) -> Result<String, TErr> {
+fn do_delete(conn: &Connection, id: u32) -> Result<String> {
     let mut stmt = conn.prepare("DELETE FROM entry WHERE id = ?1")?;
 
     let num_deleted = stmt.execute(&[&id])?;
@@ -143,11 +163,11 @@ fn do_delete(conn: &Connection, id: u32) -> Result<String, TErr> {
     if num_deleted > 0 {
         Ok(format!("Entry {} deleted", id))
     } else {
-        Err(TErr::NoSuchEntry(id))
+        Err(ErrorKind::NoSuchEntry(id).into())
     }
 }
 
-fn do_set_page(conn: &Connection, id: u32, page: u32) -> Result<String, TErr> {
+fn do_set_page(conn: &Connection, id: u32, page: u32) -> Result<String> {
     let mut stmt = conn.prepare("UPDATE entry SET page = ?2 where id = ?1")?;
 
     let num_updated = stmt.execute(&[&id, &page])?;
@@ -155,11 +175,11 @@ fn do_set_page(conn: &Connection, id: u32, page: u32) -> Result<String, TErr> {
     if num_updated > 0 {
         Ok(format!("Set page to {} for entry {}", page, id))
     } else {
-        Err(TErr::NoSuchEntry(id))
+        Err(ErrorKind::NoSuchEntry(id).into())
     }
 }
 
-fn do_choose(conn: &Connection) -> Result<String, TErr> {
+fn do_choose(conn: &Connection) -> Result<String> {
     let mut stmt = conn.prepare("SELECT id, name, author, page, genre, read \
                                  date_added, date_finished, rating FROM entry \
                                  WHERE read = 0 \
@@ -186,7 +206,7 @@ fn do_choose(conn: &Connection) -> Result<String, TErr> {
 }
 
 fn print_entries<'a, F: FnMut(&rusqlite::Row) -> Entry>(rows: rusqlite::MappedRows<'a, F>)
-                                                        -> Result<u32, TErr> {
+                                                        -> Result<u32> {
     let mut table = Table::new();
     table.add_row(row!["ID", "Name", "AUTHOR", "GENRE", "PAGE", "READ", "DATE ADDED",
     "DATE FINISHED", "RATING"]);
