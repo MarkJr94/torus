@@ -10,6 +10,7 @@ pub enum TErr {
     NoSuchEntry(u32),
     Parse(ParseIntError),
     MissingArg(&'static str),
+    BadRating,
 }
 
 impl From<rusqlite::Error> for TErr {
@@ -31,6 +32,7 @@ impl fmt::Display for TErr {
             TErr::NoSuchEntry(id) => write!(f, "No entry with id {}", id),
             TErr::Parse(ref err) => write!(f, "Parsing error: {}", err),
             TErr::MissingArg(arg) => write!(f, "Missing argument <{}>", arg),
+            TErr::BadRating => write!(f, "Ratings must be between 1 and 5"),
         }
     }
 }
@@ -42,6 +44,7 @@ impl error::Error for TErr {
             TErr::NoSuchEntry(_) => "Invalid entry id",
             TErr::Parse(_) => "Parsing error",
             TErr::MissingArg(_) => "Missing argument",
+            TErr::BadRating => "Ratings must be between 1 and 5",
         }
     }
 
@@ -51,6 +54,7 @@ impl error::Error for TErr {
             TErr::NoSuchEntry(_) => None,
             TErr::Parse(ref err) => Some(err),
             TErr::MissingArg(_) => None,
+            TErr::BadRating => None,
         }
     }
 }

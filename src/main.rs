@@ -4,6 +4,7 @@ extern crate clap;
 extern crate linefeed;
 extern crate xdg;
 extern crate rusqlite;
+extern crate time;
 extern crate cmdline_parser;
 
 mod commands;
@@ -42,7 +43,10 @@ fn create_db<T: AsRef<Path>>(path: &T) -> Result<Connection, Box<Error>> {
                  name TEXT NOT NULL,
                  read BOOLEAN NOT NULL,
                  page INTEGER NOT NULL,
-                 genre TEXT NOT NULL)",
+                 genre TEXT NOT NULL,
+                 date_added TEXT NOT NULL,
+                 date_finished TEXT,
+                 rating INTEGER)",
                  &[])?;
 
     Ok(conn)
@@ -101,6 +105,9 @@ fn ep<'a>(conn: &Connection, matches: clap::ArgMatches<'a>) -> Result<(), err::T
                 .into(),
             read: false,
             id: 0,
+            date_added: time::get_time(),
+            date_finished: None,
+            rating: None,
         };
 
         command = Command::Add(entry);
@@ -153,6 +160,20 @@ fn ep<'a>(conn: &Connection, matches: clap::ArgMatches<'a>) -> Result<(), err::T
             .parse()?;
 
         command = Command::SetPage(id, page);
+    }
+
+    if let Some(rate) = matches.subcommand_matches("rate") {
+        let id = rate
+            .value_of("ENTRY_ID")
+            .ok_or(TErr::MissingArg("ENTRY_ID"))?
+            .parse()?;
+
+        let rating = rate
+            .value_of("RATING")
+            .ok_or(TErr::MissingArg("RATING"))?
+            .parse()?;
+
+        command = Command::Rate(id, rating);
     }
 
     let msg_res = exec_command(&conn, command.clone());
@@ -253,6 +274,16 @@ fn main() {
                          .required(true)
                          .index(2)
                          .help("The last page you read of this entry")))
+        .subcommand(SubCommand::with_name("rate")
+            .about("Rate an entry")
+            .arg(Arg::with_name("ENTRY_ID")
+                .required(true)
+                .index(1)
+                .help("ID of entry to modify (acquire from `search` or `list`)"))
+            .arg(Arg::with_name("RATING")
+                .required(true)
+                .index(2)
+                .help("Desired rating (1-5)")))
         .subcommand(SubCommand::with_name("shell")
                     .about("Enter interactive mode"));
 
