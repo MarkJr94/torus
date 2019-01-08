@@ -296,7 +296,7 @@ dependencies = [
 
 [[package]]
 name = "torus"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "clap 2.23.2 (registry+https://github.com/rust-lang/crates.io-index)",
  "cmdline-parser 0.1.0 (registry+https://github.com/rust-lang/crates.io-index)",
