@@ -2,6 +2,12 @@
 authors = ["Mark Sinclair <mark.edward.x@gmail.com>"]
 name = "torus"
 version = "0.1.0"
+description = "A simple CLI application to keep track of what you are reading"
+license = "GPL-3.0-only"
+keywords = ["CLI", "documents"]
+categories = ["command-line-utilities", "visualization"]
+homepage = "https://github.com/MarkJr94/torus"
+repository = "https://github.com/MarkJr94/torus"
 
 [dependencies]
 clap = "^2"
